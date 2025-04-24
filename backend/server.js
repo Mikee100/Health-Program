@@ -1,6 +1,6 @@
 // backend/app.js
 const express = require('express');
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise');
 const cors = require('cors');
 const morgan = require('morgan');
 require('dotenv').config();
@@ -13,20 +13,14 @@ app.use(morgan('dev'));
 app.use(express.json());
 
 // Database connection
-const db = mysql.createConnection({
+const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME
 });
 
-db.connect(err => {
-  if (err) {
-    console.error('Database connection failed:', err.stack);
-    return;
-  }
-  console.log('Connected to database');
-});
+
 
 // Health Programs Endpoints
 app.post('/api/programs', (req, res) => {
@@ -44,18 +38,26 @@ app.post('/api/programs', (req, res) => {
   });
 });
 
-app.get('/api/programs', (req, res) => {
-  db.query('SELECT * FROM health_programs ORDER BY id DESC', (err, rows) => {
-    if (err) return res.status(500).send(err.message);
-    res.json(rows); // ✅ should be an array
-  });
+app.get('/api/programs', async (req, res) => {
+  try {
+    // Execute the query to get all programs
+    const [rows] = await db.query('SELECT * FROM health_programs ORDER BY id DESC');
+    
+    // Respond with the results as JSON
+    res.json(rows);
+  } catch (err) {
+    console.error('Database query failed:', err.message);
+    
+    // Return a 500 error with the error message
+    res.status(500).send('Database query failed');
+  }
 });
 
 
 // Client Endpoints
-app.post('/api/clients', (req, res) => {
+app.post('/api/clients', async (req, res) => {
   const { firstName, lastName, dateOfBirth, gender, contactNumber, email, address } = req.body;
-  
+
   if (!firstName || !lastName) {
     return res.status(400).send('First name and last name are required');
   }
@@ -65,20 +67,23 @@ app.post('/api/clients', (req, res) => {
     (first_name, last_name, date_of_birth, gender, contact_number, email, address) 
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
-  
-  db.query(sql, 
-    [firstName, lastName, dateOfBirth, gender, contactNumber, email, address], 
-    (err, result) => {
-      if (err) return res.status(500).send(err.message);
-      
-      db.query('SELECT * FROM clients WHERE id = ?', [result.insertId], (err, rows) => {
-        if (err) return res.status(500).send(err.message);
-        res.status(201).json(rows[0]);
-      });
-    }
-  );
+
+  try {
+    // Insert the new client into the clients table
+    const [result] = await db.query(sql, [firstName, lastName, dateOfBirth, gender, contactNumber, email, address]);
+    
+    // Now retrieve the newly created client to send back the details
+    const [client] = await db.query('SELECT * FROM clients WHERE id = ?', [result.insertId]);
+    
+    // Respond with the client data
+    res.status(201).json(client);
+  } catch (err) {
+    console.error('Error inserting client:', err.message);
+    res.status(500).send(err.message);
+  }
 });
-app.post('/api/enroll', (req, res) => {
+
+app.post('/api/enroll', async (req, res) => {
   const { clientId, programId } = req.body;
 
   if (!clientId || !programId) {
@@ -86,19 +91,30 @@ app.post('/api/enroll', (req, res) => {
   }
 
   const sql = 'INSERT INTO client_programs (client_id, program_id) VALUES (?, ?)';
-  db.query(sql, [clientId, programId], (err, result) => {
-    if (err) return res.status(500).send(err.message);
+  
+  try {
+    const [result] = await db.query(sql, [clientId, programId]);
     res.status(201).send('Client enrolled in program');
-  });
+  } catch (err) {
+    console.error('Error enrolling client in program:', err.message);
+    res.status(500).send(err.message);
+  }
 });
 
 
-app.get('/api/clients', (req, res) => {
-  const sql = 'SELECT * FROM clients';
-  db.query(sql, (err, results) => {
-    if (err) return res.status(500).send(err.message);
+app.get('/api/clients', async (req, res) => {
+  try {
+    // Execute the query to get all clients
+    const [results] = await db.query('SELECT * FROM clients');
+    
+    // Respond with the results as JSON
     res.json(results);
-  });
+  } catch (err) {
+    console.error('Database query failed:', err.message);
+    
+    // Return a 500 error with the error message
+    res.status(500).send('Database query failed');
+  }
 });
 
 app.get('/api/clients/search', (req, res) => {
@@ -115,14 +131,38 @@ app.get('/api/clients/search', (req, res) => {
   });
 });
 
-app.get('/api/clients/:id', (req, res) => {
-  const sql = 'SELECT * FROM clients WHERE id = ?';
-  db.query(sql, [req.params.id], (err, results) => {
-    if (err) return res.status(500).send(err.message);
-    if (results.length === 0) return res.status(404).send('Client not found');
-    res.json(results[0]);
-  });
+app.get('/api/clients/:clientId', async (req, res) => {
+  const clientId = req.params.clientId;
+
+  try {
+    // Fetch client info
+    const [clientResult] = await db.query('SELECT * FROM clients WHERE id = ?', [clientId]);
+
+    if (clientResult.length === 0) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    const client = clientResult[0];
+
+    // Fetch programs associated with the client
+    const [programsResult] = await db.query(`
+      SELECT hp.id, hp.name, hp.description
+      FROM client_programs cp
+      JOIN health_programs hp ON cp.program_id = hp.id
+      WHERE cp.client_id = ?
+    `, [clientId]);
+
+    // Add programs array to the client object
+    client.programs = programsResult;
+
+    // Respond with full data
+    res.json(client);
+  } catch (err) {
+    console.error('Error fetching client profile:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
+
 
 // Program Enrollment Endpoints
 app.post('/api/clients/:id/enroll', (req, res) => {
@@ -152,19 +192,7 @@ app.post('/api/clients/:id/enroll', (req, res) => {
   });
 });
 
-app.get('/api/clients/:id/programs', (req, res) => {
-  const sql = `
-    SELECT hp.*, cp.status, cp.enrollment_date 
-    FROM client_programs cp
-    JOIN health_programs hp ON cp.program_id = hp.id
-    WHERE cp.client_id = ?
-  `;
-  
-  db.query(sql, [req.params.id], (err, results) => {
-    if (err) return res.status(500).send(err.message);
-    res.json(results);
-  });
-});
+
 
 // Start server
 const PORT = process.env.PORT || 3000;
