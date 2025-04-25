@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { FaUsers, FaClipboardList, FaSearch, FaCog, FaHeartbeat } from 'react-icons/fa';
 
 const navItems = [
-  { label: 'Clients', path: '/clients', icon: <FaUsers /> },
+  { label: 'Clients', path: '/', icon: <FaUsers /> },
   { label: 'Programs', path: '/programs', icon: <FaClipboardList /> },
   { label: 'Enrollments', path: '/enrollments', icon: <FaClipboardList /> },
   { label: 'Search Clients', path: '/search', icon: <FaSearch /> },
@@ -13,13 +13,13 @@ const navItems = [
 const Sidebar = () => {
   return (
     <div className="w-64 h-screen bg-gradient-to-b from-[#1f2937] to-[#111827] text-white fixed top-0 left-0 shadow-lg p-6">
-      {/* Logo/Heading */}
+     
       <div className="flex items-center justify-center mb-10">
         <FaHeartbeat className="text-pink-500 text-3xl mr-2 animate-pulse" />
         <h1 className="text-2xl font-bold tracking-wider">Health Admin</h1>
       </div>
 
-      {/* Nav Links */}
+      
       <nav className="flex flex-col gap-4">
         {navItems.map(({ label, path, icon }, index) => (
           <NavLink

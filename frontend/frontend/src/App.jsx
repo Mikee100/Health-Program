@@ -1,4 +1,3 @@
-// src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Sidebar from './Components/Sidebar';
@@ -16,7 +15,7 @@ const App = () => {
         <Sidebar />
         <div className="ml-64 p-6 w-full">
           <Routes>
-            <Route path="/clients" element={<ClientsPage />} />
+            <Route path="/" element={<ClientsPage />} />
             <Route path="/programs" element={<ProgramsPage />} />
             <Route path="/enrollments" element={<EnrollmentsPage />} />
             <Route path="/search" element={<SearchClientsPage />} />
